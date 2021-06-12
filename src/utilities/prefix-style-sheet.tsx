@@ -1,5 +1,5 @@
 import { parse, Root, stringify } from "postcss";
-import { pipe, flow } from "fp-ts/function";
+import { flow } from "fp-ts/function";
 
 const prefixRules =
   (prefix: string) =>
