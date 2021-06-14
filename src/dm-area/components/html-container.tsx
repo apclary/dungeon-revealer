@@ -1,4 +1,4 @@
-import React from "react";
+import * as React from "react";
 import styled from "@emotion/styled/macro";
 import { ShowdownExtension } from "showdown";
 import MarkdownView from "react-showdown";
@@ -11,6 +11,7 @@ import {
   Divider,
 } from "@chakra-ui/react";
 import _sanitizeHtml from "sanitize-html";
+import { StyleSheet } from "@emotion/sheet";
 import { useStaticRef } from "../../hooks/use-static-ref";
 import {
   parseTemplateAttributes,
@@ -19,6 +20,9 @@ import {
 import { NoteLink } from "./note-link";
 import { SharableImage } from "./sharable-image";
 import { ChatMessageButton } from "./chat-message-button";
+import { randomHash } from "../../utilities/random-hash";
+import { processUserStyleSheet } from "../../utilities/process-user-style-sheet";
+import { useGetIsMounted } from "../../hooks/use-get-is-mounted";
 
 const H1: React.FC = (props) => <Heading as="h1">{props.children}</Heading>;
 const H2: React.FC = (props) => (
@@ -78,6 +82,7 @@ const allowedTags = [
   "li",
   "hr",
   "img",
+  "style",
   ...Object.keys(components),
 ];
 
@@ -123,6 +128,45 @@ const transformTemplateExtension = (
   },
 });
 
+const scopedStyleBlockExtension = (
+  selectorScope: string,
+  onCSSNodes: (nodes: Array<string>) => void
+): ShowdownExtension => ({
+  type: "lang",
+  filter: (text) => {
+    let finalText = "";
+    let startTagMatch: null | RegExpExecArray;
+
+    const START_TAG = /(<style(?:[^>]*)>)/;
+    const END_TAG = "</style>";
+
+    while ((startTagMatch = START_TAG.exec(text)) !== null) {
+      let endTagIndex = text.indexOf(END_TAG);
+      if (endTagIndex === -1) {
+        break;
+      }
+      finalText += text.substring(0, startTagMatch.index);
+
+      const cssStyleSheet = text.substring(
+        startTagMatch.index + startTagMatch[1].length,
+        endTagIndex
+      );
+
+      text = text.substr(endTagIndex + END_TAG.length);
+
+      processUserStyleSheet({ selectorScope })(cssStyleSheet)
+        .then((rules) => {
+          onCSSNodes(rules);
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+    }
+    finalText += text;
+    return finalText;
+  },
+});
+
 const sanitizeHtml = (html: string) =>
   _sanitizeHtml(html, {
     allowedTags,
@@ -132,11 +176,12 @@ const sanitizeHtml = (html: string) =>
       // alias for ChatMessage
       ChatMessage: ["message", "templateId", "var-*"],
       Link: ["id"],
-      div: ["style"],
-      span: ["style"],
-      a: ["target", "rel", "href", "id"],
-      img: ["src", "title"],
+      div: ["style", "class"],
+      span: ["style", "class"],
+      a: ["target", "rel", "href", "id", "class"],
+      img: ["src", "title", "class"],
     },
+    nonTextTags: ["script", "textarea", "option", "noscript"],
     allowedSchemes: ["http", "https"],
     allowedSchemesAppliedToAttributes: ["href"],
     selfClosing: ["Image"],
@@ -145,7 +190,7 @@ const sanitizeHtml = (html: string) =>
       lowerCaseAttributeNames: false,
     },
     transformTags: {
-      a: (name, attribs) => {
+      a: (_, attribs) => {
         if (attribs.href && /^https?:\/\//.test(attribs.href)) {
           return {
             tagName: "a",
@@ -154,7 +199,7 @@ const sanitizeHtml = (html: string) =>
               href: attribs.href,
               target: "_BLANK",
               rel: "noopener",
-            } as { [key: string]: string },
+            },
           };
         }
         return {
@@ -220,17 +265,56 @@ const HtmlContainerStyled = styled.div`
 
 export const TemplateContext = React.createContext<TemplateMap>(new Map());
 
-export const HtmlContainer: React.FC<{ markdown: string }> = React.memo(
-  ({ markdown }) => {
+export const HtmlContainer = React.memo(
+  (props: { markdown: string; scopeHash?: string }) => {
     const templateMap: TemplateMap = useStaticRef(() => new Map());
+
+    const scope = React.useMemo(
+      () => props.scopeHash ?? randomHash(),
+      [props.scopeHash]
+    );
+
+    /**
+     * We store the styles in a StyleSheet block that is appended to the document head.
+     */
+    const [styleSheet, setStyleSheet] = React.useState<null | StyleSheet>(null);
+    React.useLayoutEffect(() => {
+      const container = window.document.createElement("div");
+      window.document.head.appendChild(container);
+
+      const styleSheet = new StyleSheet({ container, key: scope });
+      setStyleSheet(styleSheet);
+
+      return () => {
+        window.document.head.removeChild(container);
+      };
+    }, [scope]);
+
+    const getIsMounted = useGetIsMounted();
+
+    if (styleSheet === null) {
+      return null;
+    }
 
     return (
       <TemplateContext.Provider value={templateMap}>
-        <HtmlContainerStyled>
+        <HtmlContainerStyled className={scope} data-css-scope-hash={scope}>
           <MarkdownView
             sanitizeHtml={sanitizeHtml}
-            markdown={markdown}
-            extensions={[transformTemplateExtension(templateMap)]}
+            markdown={props.markdown}
+            extensions={[
+              transformTemplateExtension(templateMap),
+              scopedStyleBlockExtension(
+                `[data-css-scope-hash="${scope}"]`,
+                (nodes) => {
+                  if (getIsMounted()) {
+                    for (const node of nodes) {
+                      styleSheet.insert(node);
+                    }
+                  }
+                }
+              ),
+            ]}
             components={components}
             options={{
               simpleLineBreaks: true,

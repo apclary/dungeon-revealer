@@ -13,6 +13,7 @@ const monacoFiles = [
   "vs/editor/editor.main.css",
   "vs/editor/editor.main.js",
   "vs/basic-languages/markdown/markdown.js",
+  "vs/basic-languages/css/css.js",
   "vs/loader.js",
   "vs/base/worker/workerMain.js",
 ];
