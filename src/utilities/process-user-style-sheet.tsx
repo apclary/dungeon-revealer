@@ -9,19 +9,46 @@ const prefixRulesPlugin = (prefix: string): Plugin => ({
   },
 });
 
-const allowList = {
+/**
+ * Verify whether a property is potential XSS.
+ */
+const regexJavascriptUrl = /javascript\s*\:/gim;
+const isXSSValue = (value: string) => regexJavascriptUrl.test(value);
+
+type CSSRule = boolean | ((value: string) => boolean);
+
+const allowList: Record<string, CSSRule | undefined> = {
   color: true,
+  "background-color": true,
+  padding: true,
+  "padding-left": true,
+  "padding-right": true,
+  "padding-top": true,
+  "padding-bottom": true,
+  margin: true,
+  "margin-left": true,
+  "margin-right": true,
+  "margin-bottom": true,
+  "margin-top": true,
 };
 
-const filterPropertiesPlugin = (): Plugin => ({
-  postcssPlugin: "filter-properties",
+const applyPropertyAllowListPLugin = (): Plugin => ({
+  postcssPlugin: "fapply-property-allow-list",
   Declaration: (declarationNode, helpers) => {
-    if (declarationNode.prop in allowList) {
-    } else {
-      declarationNode.replaceWith(
-        new helpers.Comment({ text: `REDACTED '${declarationNode.prop}'.` })
-      );
+    const rule = allowList[declarationNode.prop];
+
+    if (isXSSValue(declarationNode.value) === false) {
+      if (rule === true) {
+        return;
+      }
+      if (typeof rule === "function" && rule(declarationNode.value) === true) {
+        return;
+      }
     }
+
+    declarationNode.replaceWith(
+      new helpers.Comment({ text: `REDACTED '${declarationNode.prop}'.` })
+    );
   },
 });
 
@@ -45,6 +72,9 @@ type ProcessUserStyleSheetOptions = {
 export const processUserStyleSheet =
   (opts: ProcessUserStyleSheetOptions) =>
   (css: string): Promise<Array<string>> =>
-    postcss(prefixRulesPlugin(opts.selectorScope), filterPropertiesPlugin())
+    postcss(
+      prefixRulesPlugin(opts.selectorScope),
+      applyPropertyAllowListPLugin()
+    )
       .process(css, { from: undefined })
       .then((result) => result.root.nodes.map((node) => stringifyAst(node)));
