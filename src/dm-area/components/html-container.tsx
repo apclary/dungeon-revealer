@@ -22,7 +22,7 @@ import { SharableImage } from "./sharable-image";
 import { ChatMessageButton } from "./chat-message-button";
 import { randomHash } from "../../utilities/random-hash";
 import { processUserStyleSheet } from "../../utilities/process-user-style-sheet";
-import { useGetIsMounted } from "../../hooks/use-get-is-mounted";
+import { useUserStyleSheetOrchestrator } from "../../user-style-sheet-orchestrator";
 
 const H1: React.FC = (props) => <Heading as="h1">{props.children}</Heading>;
 const H2: React.FC = (props) => (
@@ -273,28 +273,12 @@ export const HtmlContainer = React.memo(
       () => props.scopeHash ?? randomHash(),
       [props.scopeHash]
     );
+    const styleSheet = useUserStyleSheetOrchestrator(scope);
 
-    /**
-     * We store the styles in a StyleSheet block that is appended to the document head.
-     */
-    const [styleSheet, setStyleSheet] = React.useState<null | StyleSheet>(null);
     React.useLayoutEffect(() => {
-      const container = window.document.createElement("div");
-      window.document.head.appendChild(container);
-
-      const styleSheet = new StyleSheet({ container, key: scope });
-      setStyleSheet(styleSheet);
-
-      return () => {
-        window.document.head.removeChild(container);
-      };
-    }, [scope]);
-
-    const getIsMounted = useGetIsMounted();
-
-    if (styleSheet === null) {
-      return null;
-    }
+      // ensure existing style-sheets are flushed before rules are added
+      styleSheet.flush();
+    });
 
     return (
       <TemplateContext.Provider value={templateMap}>
@@ -306,13 +290,7 @@ export const HtmlContainer = React.memo(
               transformTemplateExtension(templateMap),
               scopedStyleBlockExtension(
                 `[data-css-scope-hash="${scope}"]`,
-                (nodes) => {
-                  if (getIsMounted()) {
-                    for (const node of nodes) {
-                      styleSheet.insert(node);
-                    }
-                  }
-                }
+                styleSheet.addRules
               ),
             ]}
             components={components}

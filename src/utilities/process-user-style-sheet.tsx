@@ -9,7 +9,9 @@ const prefixRulesPlugin = (prefix: string): Plugin => ({
   },
 });
 
-const allowList = {};
+const allowList = {
+  color: true,
+};
 
 const filterPropertiesPlugin = (): Plugin => ({
   postcssPlugin: "filter-properties",
