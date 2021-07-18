@@ -116,7 +116,7 @@
     "jest": "27.0.6",
     "leva": "0.9.13",
     "lint-staged": "11.0.1",
-    "monaco-editor": "0.25.2",
+    "monaco-editor": "0.26.1",
     "parse-color": "1.0.0",
     "patch-package": "6.4.7",
     "polished": "4.1.3",
