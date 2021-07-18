@@ -144,7 +144,7 @@
     "troika-three-text": "0.40.0",
     "ts-node-dev": "1.1.8",
     "typescript": "4.3.5",
-    "use-sound": "3.0.1",
+    "use-sound": "4.0.1",
     "vite": "2.4.2",
     "vite-plugin-babel-macros": "1.0.5",
     "zustand": "3.5.6"
